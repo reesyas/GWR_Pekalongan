@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Peta Estimasi Nilai Persil Pekalongan</title>
+  <link href="https://unpkg.com/maplibre-gl@6.18.0/dist/maplibre-gl.css" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; font-family: Arial, sans-serif; color: #162235; }
+    #map { position: absolute; inset: 0; }
+    .panel { position: absolute; z-index: 2; top: 18px; left: 18px; width: min(330px, calc(100vw - 36px)); background: #fff; border-radius: 14px; padding: 17px 18px; box-shadow: 0 5px 24px #17203330; }
+    h1 { font-size: 17px; margin: 0 0 5px; }
+    .sub { font-size: 12px; color: #617083; line-height: 1.45; }
+    .legend { margin-top: 15px; font-size: 12px; }
+    .basemap-label { margin-top: 14px; font-size: 12px; font-weight: 700; color: #455468; }
+    .basemap-buttons { display: flex; gap: 8px; margin-top: 7px; }
+    .basemap-buttons button { border: 1px solid #cbd5e1; background: #f7f9fc; border-radius: 7px; padding: 7px 12px; color: #26364a; cursor: pointer; }
+    .basemap-buttons button.active { background: #26364a; color: #fff; border-color: #26364a; }
+    .legend-row { display: flex; align-items: center; gap: 9px; margin: 7px 0; }
+    .swatch { width: 17px; height: 17px; border: 1px solid #73809455; border-radius: 4px; }
+    .note { border-top: 1px solid #e8edf2; margin-top: 13px; padding-top: 10px; color: #68778a; font-size: 11px; line-height: 1.4; }
+    .maplibregl-popup-content { box-sizing: border-box; width: 300px; max-width: calc(100vw - 32px); padding: 15px 17px; font: 13px/1.45 Arial, sans-serif; border-radius: 12px; box-shadow: 0 8px 28px #10182835; overflow-wrap: anywhere; }
+    .popup-title { font-size: 15px; font-weight: 700; margin-bottom: 3px; color: #162235; }
+    .popup-id { font-size: 11px; color: #718096; margin-bottom: 9px; }
+    .popup-row { display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 10px; padding: 7px 0; border-top: 1px solid #edf0f4; }
+    .popup-label { color: #536277; }
+    .popup-value { font-weight: 700; text-align: right; white-space: nowrap; color: #162235; }
+    .status { position: absolute; z-index: 2; bottom: 18px; left: 18px; padding: 8px 11px; background: #fff; border-radius: 8px; box-shadow: 0 2px 12px #17203325; font-size: 12px; }
+    @media (max-width: 600px) { .panel { top: 10px; left: 10px; padding: 13px; } .status { bottom: 10px; left: 10px; } }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <section class="panel">
+    <h1>Estimasi Nilai Persil Kota Pekalongan</h1>
+    <div class="sub">Peta interaktif hasil prediksi GWR berbasis transaksi (acuan model 2021).</div>
+    <div class="basemap-label">Tampilan dasar</div>
+    <div class="basemap-buttons">
+      <button id="btn-street" class="active" type="button">Peta jalan</button>
+      <button id="btn-satellite" type="button">Citra satelit</button>
+    </div>
+    <div class="legend">
+      <div class="legend-row"><span class="swatch" style="background:#334e9a"></span>&lt; Rp500 ribu/m²</div>
+      <div class="legend-row"><span class="swatch" style="background:#3188bd"></span>Rp500 ribu–&lt;Rp1 juta/m²</div>
+      <div class="legend-row"><span class="swatch" style="background:#45b79a"></span>Rp1–&lt;Rp2 juta/m²</div>
+      <div class="legend-row"><span class="swatch" style="background:#f2d45c"></span>Rp2–&lt;Rp5 juta/m²</div>
+      <div class="legend-row"><span class="swatch" style="background:#ed9146"></span>Rp5–&lt;Rp10 juta/m²</div>
+      <div class="legend-row"><span class="swatch" style="background:#cb4f55"></span>≥ Rp10 juta/m²</div>
+      <div class="legend-row"><span class="swatch" style="background:#cbd2dc"></span>Tidak ada prediksi</div>
+    </div>
+    <div class="note">Klik bidang untuk melihat estimasi harga per m² dan nilai total. Hasil berbasis transaksi, bukan nilai NJOP.</div>
+  </section>
+  <div class="status" id="status">Memuat peta…</div>
+<script type="module">
+  import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.18.0/dist/maplibre-gl.mjs';
+  const priceField = 'estimasi_harga_m2_eksponensial';
+  const totalField = 'estimasi_total_nilai_bidang_eksponensial';
+  const map = new maplibregl.Map({
+    container: 'map', center: [109.675, -6.89], zoom: 11.5, minZoom: 10, maxZoom: 17,
+    style: {
+      version: 8,
+      sources: {
+        osm: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, attribution: '© OpenStreetMap contributors' },
+        satellite: { type: 'raster', tiles: ['https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'], tileSize: 256, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics, and the GIS User Community' },
+        parcels: { type: 'vector', tiles: ['http://127.0.0.1:8766/tiles_baru/{z}/{x}/{y}.pbf'], minzoom: 10, maxzoom: 17, attribution: 'Estimasi GWR berbasis transaksi; bukan NJOP' }
+      },
+      layers: [
+        { id: 'osm', type: 'raster', source: 'osm' },
+        { id: 'satellite', type: 'raster', source: 'satellite', layout: { visibility: 'none' } },
+        {
+          id: 'parcels-fill', type: 'fill', source: 'parcels', 'source-layer': 'persil_prediksi_nilai_2021',
+          paint: {
+            'fill-color': ['case', ['<=', ['to-number', ['get', priceField], 0], 0], '#cbd2dc',
+              ['step', ['to-number', ['get', priceField], 0], '#334e9a', 500000, '#3188bd', 1000000, '#45b79a', 2000000, '#f2d45c', 5000000, '#ed9146', 10000000, '#cb4f55']],
+            'fill-opacity': 0.78
+          }
+        },
+        {
+          id: 'parcels-outline', type: 'line', source: 'parcels', 'source-layer': 'persil_prediksi_nilai_2021',
+          paint: { 'line-color': '#26364a', 'line-width': ['interpolate', ['linear'], ['zoom'], 13, 0, 17, 0.45], 'line-opacity': 0.45 }
+        }
+      ]
+    }
+  });
+  map.addControl(new maplibregl.NavigationControl(), 'top-right');
+  document.getElementById('btn-street').addEventListener('click', () => {
+    map.setLayoutProperty('osm', 'visibility', 'visible');
+    map.setLayoutProperty('satellite', 'visibility', 'none');
+    document.getElementById('btn-street').classList.add('active');
+    document.getElementById('btn-satellite').classList.remove('active');
+  });
+  document.getElementById('btn-satellite').addEventListener('click', () => {
+    map.setLayoutProperty('osm', 'visibility', 'none');
+    map.setLayoutProperty('satellite', 'visibility', 'visible');
+    document.getElementById('btn-satellite').classList.add('active');
+    document.getElementById('btn-street').classList.remove('active');
+  });
+  const statusEl = document.getElementById('status');
+  map.on('load', () => { statusEl.textContent = 'Peta siap • klik persil untuk detail'; });
+  map.on('error', (e) => {
+    const msg = e && e.error && e.error.message ? e.error.message : 'Periksa folder tiles dan koneksi internet.';
+    statusEl.textContent = 'Ada kendala memuat peta: ' + msg;
+  });
+  map.on('click', 'parcels-fill', (e) => {
+    const f = e.features && e.features[0]; if (!f) return;
+    const p = f.properties || {};
+    const rawId = String(p.numerikid ?? p.fid_persil ?? p.FID ?? 'Tidak tersedia');
+    const shortId = rawId.replace(/^PersilBerdasarkanStatusPendaftaran[._-]?/i, '');
+    let statusHak = p.tipehak ?? p.TIPEHAK ?? '';
+    if (!String(statusHak).trim() || String(statusHak).trim().toLowerCase() === 'kosong') statusHak = 'Tidak tercatat';
+    const price = Number(p[priceField]); const total = Number(p[totalField]);
+    const fmt = n => Number.isFinite(n) && n > 0 ? 'Rp ' + Math.round(n).toLocaleString('id-ID') : 'Tidak tersedia';
+    const escapeHtml = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const safeId = escapeHtml(shortId); const safeHak = escapeHtml(statusHak);
+    const html = `<div class="popup-title">Rincian nilai persil</div><div class="popup-id">ID: ${safeId}</div><div class="popup-row"><span class="popup-label">Status hak</span><strong class="popup-value">${safeHak}</strong></div><div class="popup-row"><span class="popup-label">Estimasi harga per m²</span><strong class="popup-value">${fmt(price)}</strong></div><div class="popup-row"><span class="popup-label">Estimasi total bidang</span><strong class="popup-value">${fmt(total)}</strong></div>`;
+    new maplibregl.Popup({ maxWidth: '320px' }).setLngLat(e.lngLat).setHTML(html).addTo(map);
+  });
+  map.on('mouseenter', 'parcels-fill', () => { map.getCanvas().style.cursor = 'pointer'; });
+  map.on('mouseleave', 'parcels-fill', () => { map.getCanvas().style.cursor = ''; });
+</script>
+</body>
+</html>
